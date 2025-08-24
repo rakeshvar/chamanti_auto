@@ -121,6 +121,8 @@ class PostProcessor:
                 plt.figure(figsize=(12, 6))
                 plt.imshow(np.log(probabilities[i] + 1e-10), aspect='auto', cmap='viridis')
                 plt.colorbar()
-                plt.savefig(f"/tmp/heatmap{randint(10**5, 10**6)}.png")
+                fig_path = f"/tmp/heatmap{randint(10**5, 10**6)}.png"
+                plt.savefig(fig_path)
+                print("Saved ", fig_path)
                 plt.close()
         return self.editdistances(labels, label_lengths, probabilities, probs_lengths)

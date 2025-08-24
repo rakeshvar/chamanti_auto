@@ -68,34 +68,34 @@ balanced_spec = [
 lite_spec = [
     # Stage 1
     (Conv2D, {'filters': 16, 'kernel_size': (3,3), 'padding': 'same'}),
-    # (LayerNormalization, {}),
+    (LayerNormalization, {}),
     (Activation, {'activation': 'swish'}),
     (MaxPooling2D, {'pool_size': (2,2)}),
 
     # Stage 2
     (DepthwiseConv2D, {'kernel_size': (3,3), 'padding': 'same'}),
     (Conv2D, {'filters': 24, 'kernel_size': (1,1)}),  # pointwise
-    # (LayerNormalization, {}),
+    (LayerNormalization, {}),
     (Activation, {'activation': 'swish'}),
     (MaxPooling2D, {'pool_size': (2,2)}),
 
     # Stage 3
     (DepthwiseConv2D, {'kernel_size': (1,5), 'padding': 'same'}),
     (Conv2D, {'filters': 40, 'kernel_size': (1,1)}),
-    # (LayerNormalization, {}),
+    (LayerNormalization, {}),
     (Activation, {'activation': 'swish'}),
     (MaxPooling2D, {'pool_size': (2,1)}),
 
     # Stage 4
     (DepthwiseConv2D, {'kernel_size': (3,3), 'padding': 'same'}),
     (Conv2D, {'filters': 64, 'kernel_size': (1,1)}),
-    # (LayerNormalization, {}),
+    (LayerNormalization, {}),
     (Activation, {'activation': 'swish'}),
 
     # Stage 5
     (DepthwiseConv2D, {'kernel_size': (1,5), 'padding': 'same'}),
     (Conv2D, {'filters': 96, 'kernel_size': (1,1)}),
-    # (LayerNormalization, {}),
+    (LayerNormalization, {}),
     (Activation, {'activation': 'swish'}),
     (MaxPooling2D, {'pool_size': (2,1)}),
 
