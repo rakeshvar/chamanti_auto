@@ -64,8 +64,8 @@ class PostProcessor:
         return labels_out
 
     def decode(self, softmax_firings):
-        max_labels = np.argmax(softmax_firings, 0)
-        return self.remove_blanks_repeats(max_labels)
+        top_labels = np.argmax(softmax_firings, 1)  # (W, A) → (W,)
+        return self.remove_blanks_repeats(top_labels)
 
     def show_all(self, shown_labels, shown_img, softmax_firings, show_imgs):
         shown_chars = self.labels_to_chars(shown_labels)
@@ -98,17 +98,12 @@ class PostProcessor:
                 slab_log(softmax_firings[:, l], c)
 
     def editdistances(self, truths, lengths, probabilities, problengths):
-        guesses = [self.decode(prob[:il].T) for prob, il in zip(probabilities, problengths)]
-        tot_len = sum(lengths) # map(max, lengths, map(len, guesses)))
-        dists = list(editdistance.eval(t[:l], g) for t, l, g in zip(truths, lengths, guesses))
-        tot_dist = sum(dists)
-        err = tot_dist / tot_len
-        print("Edit Distances ", *zip(dists, lengths))
-        print(f"Edit distance: {tot_dist} / length: {tot_len} = rate : {err:.1%}")
-        return err
+        dists = [editdistance.eval(tr[:l], self.decode(pr[:pl]))
+                    for pr, pl, tr, l in zip(probabilities, problengths, truths, lengths)]
+        return sum(dists) / sum(lengths)
 
     def show_batch(self,
-                   images, image_lengths,        # (B, H, W), (B,)
+                   images, image_lengths,        # (B, H, W, 1), (B,)
                    labels, label_lengths,
                    probabilities, probs_lengths, # (B, W, A), (B,)
                    num_samples=5):
@@ -125,4 +120,6 @@ class PostProcessor:
                 plt.savefig(fig_path)
                 print("Saved ", fig_path)
                 plt.close()
-        return self.editdistances(labels, label_lengths, probabilities, probs_lengths)
+
+        editdistances = self.editdistances(labels, label_lengths, probabilities, probs_lengths)
+        return editdistances
