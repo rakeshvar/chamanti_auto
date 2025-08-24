@@ -3,7 +3,7 @@ from pathlib import Path
 
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.python.framework.smart_cond import smart_case
+from tensorflow.keras.models import load_model
 
 from model_builder import CRNNBuilder, CRNNReshape, CTCLayer  # <-- from our earlier class
 from post_process import PostProcessor
@@ -67,6 +67,7 @@ input_shape = (height, max_width, 1)
 print(scriber)
 print(f"Input shape B, (Ht, Wd, 1) : {batch_size} {input_shape}")
 print(args)
+print("GPUs Available:", tf.config.list_physical_devices('GPU'))
 
 # ------------------------
 # Data pipeline (infinite dataset)
@@ -96,11 +97,19 @@ dataset = tf.data.Dataset.from_generator(
 if args.init_from.endswith('.keras'):
     checkpoint_path = Path(args.init_from)
     print(f"Loading model from {checkpoint_path}")
-    ctc_model = tf.keras.models.load_model(checkpoint_path, compile=True,
-                                           custom_objects={'CRNNReshape': CRNNReshape, 'CTCLayer': CTCLayer})
+    ctc_model = load_model(checkpoint_path, compile=True,
+                    custom_objects={'CRNNReshape': CRNNReshape, 'CTCLayer': CTCLayer})
     prediction_model = keras.models.Model(ctc_model.get_layer(name="image").output,
                                           ctc_model.get_layer(name="softmax").output)
     ckpt_with = checkpoint_path.stem[:2] + "-cont-"
+
+    # Bias towards blanks and against punctuation
+    sml = ctc_model.get_layer("softmax")
+    weights, biases = sml.get_weights()
+    biases[-1] += 5.5  # 5-4.6, 6-3.7 , 7-3.6, 8-4
+    biases[1:42] -= .5  # 6: .5-3.5  1.5-3.5
+    sml.set_weights([weights, biases])
+
 elif args.init_from in specs:
     spec = specs[args.init_from]
     builder = CRNNBuilder(spec, input_shape, max_label_len, num_classes, learning_rate=args.learning_rate)
@@ -113,11 +122,6 @@ else:
 
 ctc_model.summary()
 
-sml = ctc_model.get_layer("softmax")
-weights, biases = sml.get_weights()
-biases[-1] += 5.5                           # 5-4.6, 6-3.7 , 7-3.6, 8-4
-biases[1:42] -= .5                          # 6: .5-3.5  1.5-3.5
-sml.set_weights([weights, biases])
 
 # ------------------------
 # Callbacks + Custom Callback: EDER + sample display + checkpoint
