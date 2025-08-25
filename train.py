@@ -103,12 +103,6 @@ if args.init_from.endswith('.keras'):
                                           ctc_model.get_layer(name="softmax").output)
     ckpt_with = checkpoint_path.stem[:2] + "-cont-"
 
-    # Bias towards blanks and against punctuation
-    sml = ctc_model.get_layer("softmax")
-    weights, biases = sml.get_weights()
-    biases[-1] += 5.5  # 5-4.6, 6-3.7 , 7-3.6, 8-4
-    biases[1:42] -= .5  # 6: .5-3.5  1.5-3.5
-    sml.set_weights([weights, biases])
 
 elif args.init_from in specs:
     spec = specs[args.init_from]
@@ -116,6 +110,13 @@ elif args.init_from in specs:
     ctc_model = builder.ctc_model
     prediction_model = builder.model
     ckpt_with = args.init_from
+
+    # Bias towards blanks and against punctuation
+    sml = ctc_model.get_layer("softmax")
+    weights, biases = sml.get_weights()
+    biases[-1] += 5.5  # 5-4.6, 6-3.7 , 7-3.6, 8-4
+    biases[1:42] -= .5  # 6: .5-3.5  1.5-3.5
+    sml.set_weights([weights, biases])
 
 else:
     raise ValueError("Did not understand --init_from. Needs to be name of a spec or a checkpoint.")
