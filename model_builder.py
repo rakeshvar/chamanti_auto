@@ -27,9 +27,9 @@ class CRNNReshape(Layer):
 @saving.register_keras_serializable()
 class CTCLayer(Layer):
     """ You can directly add the loss to the model. But having this class makes the model summary look good. """
-    def __init__(self, width_down, **kwargs):
+    def __init__(self, tot_wd_pooling, **kwargs):
         super().__init__(**kwargs)
-        self.tot_wd_pooling = width_down
+        self.tot_wd_pooling = tot_wd_pooling
 
     def call(self, labels, softmaxout, widths, lengths):
         widths //= self.tot_wd_pooling
