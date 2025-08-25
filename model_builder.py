@@ -29,16 +29,16 @@ class CTCLayer(Layer):
     """ You can directly add the loss to the model. But having this class makes the model summary look good. """
     def __init__(self, width_down, **kwargs):
         super().__init__(**kwargs)
-        self.tot_wd_pooling = width_down
+        self.width_down = width_down
 
     def call(self, labels, softmaxout, widths, lengths):
-        widths //= self.tot_wd_pooling
+        widths //= self.width_down
         self.add_loss(keras.backend.ctc_batch_cost(labels, softmaxout, widths, lengths))
         return softmaxout # Return can be any dummy value
 
     def get_config(self):
         config = super().get_config()
-        config.update({'tot_wd_pooling': self.tot_wd_pooling})
+        config.update({'width_down': self.width_down})
         return config
 
 names[CRNNReshape] = 'CRNNReshape'
