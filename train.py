@@ -13,7 +13,7 @@ try:
   import telugu as lang
   from Lekhaka import Scribe, Deformer, Noiser
   from Lekhaka import DataGenerator
-except ModuleNotFoundError:
+except ImportError:                          # ModuleNotFoundError:
   import Lekhaka.telugu as lang
   from Lekhaka.Lekhaka import Scribe, Deformer, Noiser
   from Lekhaka.Lekhaka import DataGenerator
@@ -134,6 +134,7 @@ ckpt_head = f"{ckpt_with}-{timestamp}"
 class MyCallback(keras.callbacks.Callback):
     def on_epoch_begin(self, epoch, logs=None):
         image, labels, image_lengths, label_lengths = datagen.get()
+        print(image.shape)
         probabilities = prediction_model.predict(image)
         probs_lengths = image_lengths // (max_width // probabilities.shape[-2])
         ederr = printer.show_batch(image, image_lengths, labels, label_lengths, probabilities, probs_lengths)
