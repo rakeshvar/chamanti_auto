@@ -2,6 +2,7 @@ import editdistance
 import numpy as np
 import matplotlib.pyplot as plt
 from random import randint
+import tensorflow as tf
 
 from colored import fg, attr
 reset = attr('reset')
@@ -69,7 +70,7 @@ class PostProcessor:
 
     def show_all(self, shown_labels, shown_img, softmax_firings, show_imgs):
         shown_chars = self.labels_to_chars(shown_labels)
-        myshow('Shown  ', shown_labels, shown_chars)
+        myshow('\nShown  ', shown_labels, shown_chars)
 
         if softmax_firings is not None:
             seen_labels = self.decode(softmax_firings)
@@ -85,7 +86,9 @@ class PostProcessor:
             extra_labels = list(set_seen - set_shown)
             extra_chars = self.labels_to_chars(extra_labels)
             myshow('Extras ', extra_labels, extra_chars)
-            print()
+
+            edd = editdistance.eval(shown_labels, seen_labels)/len(shown_labels)
+            print(f"Edit Dist: {edd:.1%}")
 
         if show_imgs:
             print('Image Shown:')
@@ -123,3 +126,43 @@ class PostProcessor:
 
         editdistances = self.editdistances(labels, label_lengths, probabilities, probs_lengths)
         return editdistances
+
+    def beam_decode(self, logits, input_lengths, beam_width=10, greedy=False):
+        """
+        Decodes network output into text strings.
+
+        Args:
+            logits: model outputs, shape (B, T, num_classes)
+            input_lengths: lengths of each sequence (B,) in time steps
+            beam_width: beam size for beam search (if greedy=False)
+            greedy: if True, use simple argmax decoding
+
+        Returns:
+            List of strings (decoded predictions)
+        """
+        # Ensure tensor
+        logits = tf.convert_to_tensor(logits, dtype=tf.float32)
+        input_lengths = tf.convert_to_tensor(input_lengths, dtype=tf.int32)
+
+        # Decode
+        decoded, _ = tf.keras.backend.ctc_decode(
+            logits,
+            input_length=input_lengths,
+            greedy=greedy,
+            beam_width=beam_width
+        )
+        try:
+            decoded_dense = tf.sparse.to_dense(decoded[0], default_value=-1).numpy()
+        except TypeError as e:
+            decoded_dense = decoded[0].numpy()
+
+        results = []
+        for seq in decoded_dense:
+            chars = []
+            for idx in seq:
+                if idx == -1:  # padding
+                    continue
+                if idx < len(self.symbols):
+                    chars.append(self.symbols[idx])
+            results.append("".join(chars))
+        return results

@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import Model, layers, Sequential, optimizers, saving
-from tensorflow.keras.layers import (Layer, Conv2D, DepthwiseConv2D, MaxPooling2D,
+from tensorflow.keras import Model, optimizers, saving
+from tensorflow.keras.layers import (Input, Layer, Conv2D, DepthwiseConv2D, MaxPooling2D,
                                      BatchNormalization, LayerNormalization, Activation,
                                      Dense, Bidirectional, LSTM, GRU, Dropout)
 
@@ -29,16 +29,16 @@ class CTCLayer(Layer):
     """ You can directly add the loss to the model. But having this class makes the model summary look good. """
     def __init__(self, width_down, **kwargs):
         super().__init__(**kwargs)
-        self.width_down = width_down
+        self.tot_wd_pooling = width_down
 
-    def call(self, labels, logits, widths, lengths):
-        widths //= self.width_down
-        self.add_loss(keras.backend.ctc_batch_cost(labels, logits, widths, lengths))
-        return logits
+    def call(self, labels, softmaxout, widths, lengths):
+        widths //= self.tot_wd_pooling
+        self.add_loss(keras.backend.ctc_batch_cost(labels, softmaxout, widths, lengths))
+        return softmaxout # Return can be any dummy value
 
     def get_config(self):
         config = super().get_config()
-        config.update({'width_down': self.width_down})
+        config.update({'tot_wd_pooling': self.tot_wd_pooling})
         return config
 
 names[CRNNReshape] = 'CRNNReshape'
@@ -58,22 +58,24 @@ class CRNNBuilder:
         self.max_label_length = max_label_length
         self.num_classes = num_classes
         self.learning_rate = learning_rate
+        self.tot_wd_pooling = 1
 
         ########################################
         # First build the forward model 
         ########################################
-        inputs = layers.Input(shape=self.input_shape, name="image")
+        inputs = Input(shape=self.input_shape, name="image")
 
         x = inputs
         for i, (layer_cls, kwargs) in enumerate(self.layer_specs):
-            name = f"{names[layer_cls]}{i}"
-            if layer_cls == layers.Bidirectional:                # Handle recurrent layers specially
-                rnn_layer = kwargs['layer']
-                if len(x.shape) == 4:                           # CNN -> Reshape -> RNN
-                    x = CRNNReshape(name=f"CrnnReshape{i}")(x)  # (B, h, w, C) -> (B, w, C*h)
-                x = layer_cls(rnn_layer, name=name)(x)
+            name = f"{names.get(layer_cls, layer_cls.__name__)}{i}"
+            if layer_cls == Bidirectional:                     # Bidirectional wraps another layer
+                rnn_layer = kwargs.pop("layer")
+                x = layer_cls(rnn_layer, **kwargs, name=name)(x)
             else:
                 x = layer_cls(**kwargs, name=name)(x)
+
+            if layer_cls == MaxPooling2D:
+                self.tot_wd_pooling *= kwargs['pool_size'][1]
 
         outputs = Dense(units=self.num_classes+1, activation='softmax', name='softmax')(x)
         self.model = Model(inputs, outputs, name="CRNN")
@@ -81,16 +83,15 @@ class CRNNBuilder:
         ########################################
         # Then the training model with loss 
         ########################################
-        labeling = layers.Input(name="labeling", shape=(max_label_length,), dtype="int32")
-        image_width = layers.Input(name="image_width", shape=(1,), dtype="int32")
-        labeling_length = layers.Input(name="labeling_length", shape=(1,), dtype="int32")
-        _logits = CTCLayer(4, name="CTC")(labeling, self.model.output, image_width, labeling_length)
+        labeling = Input(name="labeling", shape=(max_label_length,), dtype="int32")
+        image_width = Input(name="image_width", shape=(1,), dtype="int32")
+        labeling_length = Input(name="labeling_length", shape=(1,), dtype="int32")
+        ctc_out = CTCLayer(self.tot_wd_pooling, name="CTC")(labeling, self.model.output, image_width, labeling_length)
 
-        self.ctc_model = Model(inputs=[self.model.input, labeling, image_width, labeling_length],
-                          outputs=_logits,
-                          name="CRNN_CTC")
-        self.ctc_model.compile(optimizer=optimizers.Adam(self.learning_rate,
-                          clipnorm=5.))
+        ctc_inputs = [self.model.input, labeling, image_width, labeling_length]
+        self.ctc_model = Model(inputs=ctc_inputs, outputs=ctc_out, name="CRNN_CTC")
+        self.ctc_model.compile(optimizer=optimizers.Adam(self.learning_rate, clipnorm=5.))
+        self.ctc_model.tot_wd_pooling = self.model.tot_wd_pooling = self.tot_wd_pooling
 
     def save(self, path):
         self.model.save(path)

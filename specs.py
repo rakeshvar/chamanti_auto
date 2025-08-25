@@ -53,7 +53,8 @@ balanced_spec = [
     (Conv2D, {'filters': 512, 'kernel_size': (6,1), 'strides': (6,1), 'padding': 'valid'}),  # B × 1 × W/4 × 512
     (Conv2D, {'filters': 256, 'kernel_size': (1,1)}),                                        # B × 1 × W/4 × 256
 
-    # Auto Reshape →  (B, W/4, 1, feat=256)
+    # Reshape →  (B, W/4, 1, feat=256)
+    (CRNNReshape, {}),
 
     # Sequence encoder
     (Bidirectional, {'layer': LSTM(256, return_sequences=True)}),       # B × (W/4) × 512
@@ -102,6 +103,9 @@ lite_spec = [
     # Projection
     (Conv2D, {'filters': 192, 'kernel_size': (1,1)}),
 
+    # Reshape →  (B, W/4, 1, feat=256)
+    (CRNNReshape, {}),
+
     # Sequence encoder
     (Bidirectional, {'layer': GRU(256, return_sequences=True)}),
     (Dropout, {'rate': 0.2}),
@@ -110,4 +114,23 @@ lite_spec = [
     # (Dense, {'units': num_classes, 'activation': 'linear'})
 ]
 
-specs = {'balanced': balanced_spec, 'lite': lite_spec}
+
+litest = [  # img_ht = 48
+    (Conv2D, {'filters': 16, 'kernel_size': (3,3), 'padding': 'same'}),
+    (Activation, {'activation': 'swish'}),
+    (MaxPooling2D, {'pool_size': (2,2)}),
+
+    (Conv2D, {'filters': 24, 'kernel_size': (1,1)}),  # pointwise
+    (Activation, {'activation': 'swish'}),
+    (MaxPooling2D, {'pool_size': (2,2)}),
+
+    (Conv2D, {'filters': 40, 'kernel_size': (1,1)}),
+    (Activation, {'activation': 'swish'}),
+    (MaxPooling2D, {'pool_size': (2,2)}),
+
+    (CRNNReshape, {}),
+
+    (Bidirectional, {'layer': GRU(256, return_sequences=True)}),
+]
+
+specs = {'balanced': balanced_spec, 'lite': lite_spec, 'litest': litest}
