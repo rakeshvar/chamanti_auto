@@ -9,7 +9,7 @@ import editdistance
 
 from model_builder import CRNNReshape, CTCLayer
 from post_process import PostProcessor
-from post_process_eval import show_prediction
+# from post_process_eval import show_prediction
 
 try:
     import telugu as lang
@@ -79,7 +79,7 @@ def one_batch():
     i = 0
     for label, image, img_len, lbl_len, prob, prob_len in zip(labels, images, img_lens, lbl_lens, probs, prob_lens):
         label = label[:lbl_len]
-        image = image.squeeze()[::2, :img_len:wd_scaled_down_by]
+        image = image.squeeze()[::2, :img_len:2]
         prob = prob[:prob_len, :]
         shown_chars = printer.labels_to_chars(label)
         seen_labels = printer.decode(prob)
@@ -89,7 +89,7 @@ def one_batch():
         eddist = editdistance.eval(label, seen_labels)
 
         print(i)
-        if eddist > 0:
+        if eddist > -1:
             print("EDIT DISI: ", eddist)
             printer.show_all(label, image, prob, True)
             # show_prediction(image, dilate(prob, wd_scaled_down_by, 1), greedy_decoded, beam_decoded)

@@ -29,7 +29,7 @@ scribe_args = { 'height': 0, 'hbuffer': 5, 'vbuffer': 0, 'nchars_per_sample': 0}
 # ------------------------
 # Parse arguments
 # ------------------------
-parser = argparse.ArgumentParser(description="Train CRNN with CTC loss")
+parser = argparse.ArgumentParser(description="Train CRNN with CTC loss", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("-I", "--init_from", type=str, default="lite", help="Which spec to use if init_from=spec (balanced|lite)")
 parser.add_argument("-E", "--num_epochs", type=int, default=100)
 parser.add_argument("-S", "--steps_per_epoch", type=int, default=100)
@@ -62,7 +62,7 @@ num_classes = len(lang.symbols)
 max_width = scriber.width
 height = scribe_args["height"]
 max_label_len = datagen.labelswidth
-input_shape = (height, max_width, 1)
+input_shape = (height, None, 1)
 
 print(scriber)
 print(f"Input shape B, (Ht, Wd, 1) : {batch_size} {input_shape}")
@@ -151,7 +151,8 @@ callbacks = [
         patience=10,
         restore_best_weights=True
     ),
-    keras.callbacks.TensorBoard(log_dir=str(output_dir / "logs")),
+    keras.callbacks.TensorBoard(log_dir=str(output_dir / "logs"),
+                                profile_batch='2,5'),
     MyCallback()
 ]
 
@@ -159,8 +160,14 @@ callbacks = [
 # Train
 # ------------------------
 print("Starting training...")
+
+tf.profiler.experimental.start(str(output_dir / "logs"))
+
 ctc_model.fit(
     dataset,
     epochs=args.num_epochs,
     steps_per_epoch=args.steps_per_epoch,
     callbacks=callbacks)
+
+# --- Profiling stop ---
+tf.profiler.experimental.stop()
