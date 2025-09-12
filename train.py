@@ -98,7 +98,7 @@ if args.init_from.endswith('.keras'):
     checkpoint_path = Path(args.init_from)
     print(f"Loading model from {checkpoint_path}")
     ctc_model = load_model(checkpoint_path, compile=True,
-                    custom_objects={'CRNNReshape': CRNNReshape, 'CTCLayer': CTCLayer})
+                    custom_objects={'CRNNReshape': CRNNReshape, 'CTCLayer': CTCLayer}) #                        'KerasDeformer': KerasDeformer,                        'RandomShear': RandomShear,                        'RandomPerspective': RandomPerspective
     prediction_model = keras.models.Model(ctc_model.get_layer(name="image").output,
                                           ctc_model.get_layer(name="softmax").output)
     ckpt_with = checkpoint_path.stem[:2] + "-cont-"
