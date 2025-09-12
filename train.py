@@ -99,7 +99,7 @@ if args.init_from.endswith('.keras'):
     checkpoint_path = Path(args.init_from)
     print(f"Loading model from {checkpoint_path}")
     ctc_model = load_model(checkpoint_path, compile=True,
-                    custom_objects={'CRNNReshape': CRNNReshape, 'CTCLayer': CTCLayer}) #                        'KerasDeformer': KerasDeformer,                        'RandomShear': RandomShear,                        'RandomPerspective': RandomPerspective
+                    custom_objects={'CRNNReshape': CRNNReshape, 'CTCLayer': CTCLayer, 'Deformer': Deformer})
     prediction_model = keras.models.Model(ctc_model.get_layer(name="image").output,
                                           ctc_model.get_layer(name="softmax").output)
     ckpt_with = checkpoint_path.stem[:2] + "-cont-"
@@ -161,14 +161,8 @@ callbacks = [
 # Train
 # ------------------------
 print("Starting training...")
-
-tf.profiler.experimental.start(str(output_dir / "logs"))
-
 ctc_model.fit(
     dataset,
     epochs=args.num_epochs,
     steps_per_epoch=args.steps_per_epoch,
     callbacks=callbacks)
-
-# --- Profiling stop ---
-tf.profiler.experimental.stop()
