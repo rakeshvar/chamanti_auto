@@ -54,8 +54,9 @@ noise_args['num_blots'] = height//3
 # ------------------------
 printer = PostProcessor(lang.symbols)
 scriber = Scribe(lang, **scribe_args)
-deformer = Deformer(**elastic_args)
-noiser = Noiser(**noise_args)
+identity = lambda x: x
+deformer = identity #Deformer(**elastic_args)
+noiser = identity #Noiser(**noise_args)
 datagen = DataGenerator(scriber, deformer, noiser, batch_size)
 
 num_classes = len(lang.symbols)

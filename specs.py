@@ -3,6 +3,8 @@ from tensorflow.keras.layers import (Conv2D, DepthwiseConv2D, MaxPooling2D,
                                      Dense, Bidirectional, LSTM, GRU, Dropout)
 
 from model_builder import CRNNReshape
+from deformer.deformer import Deformer
+from deformer.deformer_configs import configs as dfconfigs
 
 balanced_spec = [
     # Stage 1
@@ -67,6 +69,8 @@ balanced_spec = [
 ]
 
 lite_spec = [
+    (Deformer, dfconfigs["light"]),
+
     # Stage 1
     (Conv2D, {'filters': 16, 'kernel_size': (3,3), 'padding': 'same'}),
     (LayerNormalization, {}),

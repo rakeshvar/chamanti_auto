@@ -17,6 +17,7 @@ except ImportError:
     from Lekhaka.Lekhaka import Scribe, DataGenerator
 
 from deformer import Deformer
+from deformer_configs import configs as variants
 
 def create_test_model(input_shape, deformer_params):
     inputs = tf.keras.Input(shape=input_shape, name="image")
@@ -24,83 +25,28 @@ def create_test_model(input_shape, deformer_params):
     model = tf.keras.Model(inputs=inputs, outputs=deformed, name="DeformerTest")
     return model
 
-def plot_comparison(original_batch, deformed_batch, batch_labels, save_path=None):
+def plot_comparison(original_batch, deformed_batch, save_path=None, display=True):
     batch_size = min(8, original_batch.shape[0])  # Show max 8 samples
-    
-    fig, axes = plt.subplots(2, batch_size, figsize=(2*batch_size, 4))
-    if batch_size == 1:
-        axes = axes.reshape(2, 1)
-    
+    fig, axes = plt.subplots(batch_size, 2, figsize=(2, batch_size))
+
     for i in range(batch_size):
         # Original image (top row)
-        axes[0, i].imshow(original_batch[i].squeeze(), cmap='gray')
-        axes[0, i].axis('off')
+        axes[i, 0].imshow(original_batch[i].squeeze(), cmap='gray')
+        axes[i, 0].axis('off')
         
         # Deformed image (bottom row)  
-        axes[1, i].imshow(deformed_batch[i].squeeze(), cmap='gray')
-        axes[1, i].axis('off')
+        axes[i, 1].imshow(deformed_batch[i].squeeze(), cmap='gray')
+        axes[i, 1].axis('off')
     
     plt.tight_layout()
     
-    if save_path:
+    if save_path is not None:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Comparison saved to: {save_path}")
-    
-    plt.show()
 
-def decode_label(label_array):
-    """Convert label array to readable text using language symbols"""
-    # Remove padding (assuming 0 is padding)
-    label_array = label_array[label_array != 0]
-    if len(label_array) == 0:
-        return "<empty>"
-    
-    try:
-        # Convert indices to characters
-        text = ''.join([lang.symbols[i] if i < len(lang.symbols) else '?' for i in label_array])
-        return text[:20]  # Truncate for display
-    except:
-        return f"<label:{label_array[:5]}...>"
+    if display:
+        plt.show()
 
-def test_deformer_variants():
-    """Test different deformer configurations"""
-    variants = {
-        'light': {
-            'zoom_range': 0.05,
-            'rotation_range': 0.02,
-            'translation_range': 0.05,
-            'shear_range': 0.08,
-            'contrast_range': 0.15,
-            'brightness_range': 0.10,
-            'gaussian_noise': 0.003,
-            'num_cutouts': 3,
-            'cutout_size': (.04, .04)
-        },
-        'medium': {
-            'zoom_range': 0.10,
-            'rotation_range': 0.03,
-            'translation_range': 0.08,
-            'shear_range': 0.10,
-            'contrast_range': 0.20,
-            'brightness_range': 0.15,
-            'gaussian_noise': 0.005,
-            'num_cutouts': 5,
-            'cutout_size': (.06, .06)
-        },
-        'heavy': {
-            'zoom_range': 0.15,
-            'rotation_range': 0.05,
-            'translation_range': 0.10,
-            'shear_range': 0.15,
-            'contrast_range': 0.25,
-            'brightness_range': 0.20,
-            'gaussian_noise': 0.01,
-            'num_cutouts': 8,
-            'cutout_size': (.08, .08)
-        }
-    }
-    
-    return variants
 
 def main():
     parser = argparse.ArgumentParser(description="Test KerasDeformer augmentation layer")
@@ -135,9 +81,6 @@ def main():
     print(f"Scriber setup: {scriber}")
     print(f"Max width: {scriber.width}, Input shape: ({args.height}, {scriber.width}, 1)")
     
-    # Get deformer parameters
-    variants = test_deformer_variants()
-
     # Run tests
     for deformer_name, deformer_params in variants.items():
         print(f"\nTesting {deformer_name}")
@@ -155,8 +98,6 @@ def main():
         # Get original batch from Lekhaka
         images, labels, image_lengths, label_lengths = datagen.get()
         images = 1-images
-        print(f"Generated batch shape: {images.shape}")
-        print(f"Sample labels: {[decode_label(labels[i][:label_lengths[i]]) for i in range(min(3, len(labels)))]}")
 
         # Test without augmentation (training=False)
         no_aug_output = test_model(images, training=False)
@@ -177,29 +118,9 @@ def main():
         # Save comparison plot
         save_path = output_dir / f"test_{deformer_name}.png"
 
-        if not args.no_display:
-            print("Displaying comparison...")
-            plot_comparison(images, aug_output.numpy(), labels, save_path)
-        else:
-            # Save without display
-            fig, axes = plt.subplots(2, min(8, args.batch_size), figsize=(16, 4))
-            if min(8, args.batch_size) == 1:
-                axes = axes.reshape(2, 1)
+        print("Displaying comparison...")
+        plot_comparison(images, aug_output.numpy(), save_path, not args.no_display)
 
-            for i in range(min(8, args.batch_size)):
-                axes[0, i].imshow(images[i].squeeze(), cmap='gray')
-                axes[0, i].set_title(f'Original\n{decode_label(labels[i])}', fontsize=8)
-                axes[0, i].axis('off')
-
-                axes[1, i].imshow(aug_output[i].squeeze(), cmap='gray')
-                axes[1, i].set_title('Augmented', fontsize=8)
-                axes[1, i].axis('off')
-
-            plt.tight_layout()
-            plt.savefig(save_path, dpi=150, bbox_inches='tight')
-            plt.close()
-            print(f"Saved comparison to: {save_path}")
-    
     print(f"\n✅ All tests completed successfully!")
     print(f"Output saved to: {output_dir}")
     
