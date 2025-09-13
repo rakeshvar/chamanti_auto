@@ -5,6 +5,8 @@ from tensorflow.keras.layers import (Input, Layer, Conv2D, DepthwiseConv2D, MaxP
                                      BatchNormalization, LayerNormalization, Activation,
                                      Dense, Bidirectional, LSTM, GRU, Dropout)
 
+from deformer.deformer import Deformer
+
 names = { Conv2D: 'Conv', DepthwiseConv2D: 'DConv', MaxPooling2D: 'Pool', BatchNormalization: 'BatchNorm',
           LayerNormalization: 'LayerNorm', Activation: 'Act', Dense: 'Dense', Bidirectional: 'Bidir',
           LSTM: 'LSTM', GRU: 'GRU', Dropout: 'Dropout'}
@@ -24,7 +26,6 @@ class CRNNReshape(Layer):
         b, h, w, c = input_shape
         return b, w, h * c
 
-@saving.register_keras_serializable()
 class CTCLayer(Layer):
     """ You can directly add the loss to the model. But having this class makes the model summary look good. """
     def __init__(self, width_down, **kwargs):
@@ -44,60 +45,45 @@ class CTCLayer(Layer):
 names[CRNNReshape] = 'CRNNReshape'
 names[CTCLayer] = 'CTCLayer'
 
-class CRNNBuilder:
-    def __init__(self, layer_specs, input_shape, max_label_length, num_classes, learning_rate=3e-4):
-        """
-        Args:
-            layer_specs: list of (layer, kwargs) tuples
-            input_shape: (H, W, C) without batch dimension
-            num_classes: number of output classes for CTC (incl. blank)
-            learning_rate: optimizer LR
-        """
-        self.layer_specs = layer_specs
-        self.input_shape = input_shape
-        self.max_label_length = max_label_length
-        self.num_classes = num_classes
-        self.learning_rate = learning_rate
-        self.tot_wd_pooling = 1
+def get_prediction_model(layer_specs, height, num_classes):
+    images = Input(shape=(height, None, 1), name="image")
 
-        ########################################
-        # First build the forward model 
-        ########################################
-        inputs = Input(shape=self.input_shape, name="image")
-
-        x = inputs
-        for i, (layer_cls, kwargs) in enumerate(self.layer_specs):
-            name = f"{names.get(layer_cls, layer_cls.__name__)}{i}"
-            if layer_cls == Bidirectional:                     # Bidirectional wraps another layer
-                rnn_layer = kwargs.pop("layer")
-                x = layer_cls(rnn_layer, **kwargs, name=name)(x)
-            else:
-                x = layer_cls(**kwargs, name=name)(x)
-
-            if layer_cls == MaxPooling2D:
-                self.tot_wd_pooling *= kwargs['pool_size'][1]
-
-        outputs = Dense(units=self.num_classes+1, activation='softmax', name='softmax')(x)
-        self.model = Model(inputs, outputs, name="CRNN")
-
-        ########################################
-        # Then the training model with loss 
-        ########################################
-        labeling = Input(name="labeling", shape=(max_label_length,), dtype="int32")
-        image_width = Input(name="image_width", shape=(1,), dtype="int32")
-        labeling_length = Input(name="labeling_length", shape=(1,), dtype="int32")
-        ctc_out = CTCLayer(self.tot_wd_pooling, name="CTC")(labeling, self.model.output, image_width, labeling_length)
-
-        ctc_inputs = [self.model.input, labeling, image_width, labeling_length]
-        self.ctc_model = Model(inputs=ctc_inputs, outputs=ctc_out, name="CRNN_CTC")
-        self.ctc_model.compile(optimizer=optimizers.Adam(self.learning_rate, clipnorm=5.))
-        self.ctc_model.tot_wd_pooling = self.model.tot_wd_pooling = self.tot_wd_pooling
-
-    def save(self, path):
-        self.model.save(path)
-
-    def load(self, path):
-        self.model = tf.keras.models.load_model(path, compile=False)
-        return self.model
+    x = images
+    for i, (layer_cls, kwargs) in enumerate(layer_specs):
+        name = f"{names.get(layer_cls, layer_cls.__name__)}{i}"
+        if layer_cls == Bidirectional:                     # Bidirectional wraps another layer
+            rnn_layer = kwargs.pop("layer")
+            x = layer_cls(rnn_layer, **kwargs, name=name)(x)
+        else:
+            x = layer_cls(**kwargs, name=name)(x)
 
 
+    probabilities = Dense(units=num_classes+1, activation='softmax', name='softmax')(x)
+
+    model = Model(images, probabilities, name="CRNN")
+    return model
+
+
+def get_total_width_pooling(model):
+    tot_wd_pooling = 1
+    for layer in model.layers:
+        if isinstance(layer, MaxPooling2D):
+            tot_wd_pooling *= layer.pool_size[1]
+    return tot_wd_pooling
+
+
+def get_train_model(model, deformer_args, learning_rate):
+    labeling = Input(name="labeling", shape=(None,), dtype="int32")
+    image_width = Input(name="image_width", shape=(1,), dtype="int32")
+    labeling_length = Input(name="labeling_length", shape=(1,), dtype="int32")
+    images = Input(shape=model.input_shape[1:], name="image")
+
+    deformed_images = Deformer(**deformer_args)(images)
+    probabilities = model(deformed_images)
+    tot_wd_pooling = get_total_width_pooling(model)
+    output = CTCLayer(tot_wd_pooling, name="CTC")(labeling, probabilities, image_width, labeling_length)
+
+    inputs = [images, labeling, image_width, labeling_length]
+    ctc_model = Model(inputs=inputs, outputs=output, name="CRNN_CTC")
+    ctc_model.compile(optimizer=optimizers.Adam(learning_rate, clipnorm=5.))
+    return ctc_model

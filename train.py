@@ -1,11 +1,13 @@
 import argparse
 from pathlib import Path
 
+import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.models import load_model
 
-from model_builder import CRNNBuilder, CRNNReshape, CTCLayer  # <-- from our earlier class
+from deformer.deformer_configs import configs as deformer_configs
+from model_builder import  get_train_model, get_prediction_model
 from post_process import PostProcessor
 from specs import specs
 
@@ -18,19 +20,14 @@ except ImportError:                          # ModuleNotFoundError:
   from Lekhaka.Lekhaka import Scribe, Deformer, Noiser
   from Lekhaka.Lekhaka import DataGenerator
 
-# ------------------------
-# Default Arguments
-# ------------------------
-elastic_args0 = { 'translation': 0, 'zoom': .0, 'elastic_magnitude': 0, 'sigma': 1, 'angle': 0, 'nearest': True}
-elastic_args = { 'translation': 5, 'zoom': .15, 'elastic_magnitude': 0, 'sigma': 30, 'angle': 3, 'nearest': True}
-noise_args = { 'num_blots': 25, 'erase_fraction': .9, 'minsize': 4, 'maxsize': 9}
-scribe_args = { 'height': 0, 'hbuffer': 5, 'vbuffer': 0, 'nchars_per_sample': 0}
 
 # ------------------------
 # Parse arguments
 # ------------------------
-parser = argparse.ArgumentParser(description="Train CRNN with CTC loss", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("-I", "--init_from", type=str, default="lite", help="Which spec to use if init_from=spec (balanced|lite)")
+parser = argparse.ArgumentParser(description="Train CRNN with CTC loss",
+                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument("init_from", type=str, nargs='?', default="lite",
+                    help="Which spec to use if init_from=spec (balanced|lite)")
 parser.add_argument("-E", "--num_epochs", type=int, default=100)
 parser.add_argument("-S", "--steps_per_epoch", type=int, default=100)
 parser.add_argument("-B", "--batch_size", type=int, default=64)
@@ -44,29 +41,46 @@ args = parser.parse_args()
 output_dir = Path(args.output_dir)
 output_dir.mkdir(parents=True, exist_ok=True)
 batch_size = args.batch_size
-height = args.height
-scribe_args["height"] = height
-scribe_args['nchars_per_sample'] = args.chars_per_sample
-noise_args['num_blots'] = height//3
+init_from_ckpt = args.init_from.endswith('.keras')
+
+# ------------------------
+# Build model
+# ------------------------
+if init_from_ckpt:
+    checkpoint_path = Path(args.init_from)
+    print(f"Loading model from {checkpoint_path}")
+    prediction_model = load_model(checkpoint_path)
+    ckpt_with = Path(args.init_from).stem.split('-')[0]
+
+else:
+    spec = specs[args.init_from]
+    prediction_model = get_prediction_model(spec, args.height, len(lang.symbols))
+    ckpt_with = args.init_from
+
+prediction_model.summary()
+ctc_model = get_train_model(prediction_model, deformer_configs["light"], args.learning_rate)
+ctc_model.summary()
+
+if not init_from_ckpt:
+    # Bias towards blanks
+    sml = prediction_model.get_layer("softmax")
+    weights, biases = sml.get_weights()
+    biases[-1] += 5.5
+    sml.set_weights([weights, biases])
 
 # ------------------------
 # Language Data Gen
 # ------------------------
-printer = PostProcessor(lang.symbols)
+height = prediction_model.get_layer("image").output.shape[1]
+scribe_args = {'height': height, 'hbuffer': 5, 'vbuffer': 0, 'nchars_per_sample': args.chars_per_sample}
 scriber = Scribe(lang, **scribe_args)
-identity = lambda x: x
-deformer = identity #Deformer(**elastic_args)
-noiser = identity #Noiser(**noise_args)
-datagen = DataGenerator(scriber, deformer, noiser, batch_size)
+datagen = DataGenerator(scriber, batch_size=batch_size)
+printer = PostProcessor(lang.symbols)
 
-num_classes = len(lang.symbols)
 max_width = scriber.width
-height = scribe_args["height"]
 max_label_len = datagen.labelswidth
-input_shape = (height, None, 1)
 
 print(scriber)
-print(f"Input shape B, (Ht, Wd, 1) : {batch_size} {input_shape}")
 print(args)
 print("GPUs Available:", tf.config.list_physical_devices('GPU'))
 
@@ -93,39 +107,6 @@ dataset = tf.data.Dataset.from_generator(
 ).prefetch(tf.data.AUTOTUNE).map(proper_x_y)
 
 # ------------------------
-# Build model
-# ------------------------
-if args.init_from.endswith('.keras'):
-    checkpoint_path = Path(args.init_from)
-    print(f"Loading model from {checkpoint_path}")
-    ctc_model = load_model(checkpoint_path, compile=True,
-                    custom_objects={'CRNNReshape': CRNNReshape, 'CTCLayer': CTCLayer, 'Deformer': Deformer})
-    prediction_model = keras.models.Model(ctc_model.get_layer(name="image").output,
-                                          ctc_model.get_layer(name="softmax").output)
-    ckpt_with = checkpoint_path.stem[:2] + "-cont-"
-
-
-elif args.init_from in specs:
-    spec = specs[args.init_from]
-    builder = CRNNBuilder(spec, input_shape, max_label_len, num_classes, learning_rate=args.learning_rate)
-    ctc_model = builder.ctc_model
-    prediction_model = builder.model
-    ckpt_with = args.init_from
-
-    # Bias towards blanks and against punctuation
-    sml = ctc_model.get_layer("softmax")
-    weights, biases = sml.get_weights()
-    biases[-1] += 5.5  # 5-4.6, 6-3.7 , 7-3.6, 8-4
-    biases[1:42] -= .5  # 6: .5-3.5  1.5-3.5
-    sml.set_weights([weights, biases])
-
-else:
-    raise ValueError("Did not understand --init_from. Needs to be name of a spec or a checkpoint.")
-
-ctc_model.summary()
-
-
-# ------------------------
 # Callbacks + Custom Callback: EDER + sample display + checkpoint
 # ------------------------
 from datetime import datetime
@@ -137,25 +118,14 @@ class MyCallback(keras.callbacks.Callback):
         image, labels, image_lengths, label_lengths = datagen.get()
         print(image.shape)
         probabilities = prediction_model.predict(image)
-        probs_lengths = image_lengths // (max_width // probabilities.shape[-2])
+        probs_lengths = np.ceil(image_lengths / (max_width // probabilities.shape[-2])).astype(int)
         ederr = printer.show_batch(image, image_lengths, labels, label_lengths, probabilities, probs_lengths)
         print(f"Edit Distance Error Rate: {ederr:.1%}")
 
         name = ckpt_head + f"-ep{epoch:03d}-er{int(1000*ederr):03d}.keras"
         ckpt_path = output_dir / name
-        self.model.save(ckpt_path)
+        prediction_model.save(ckpt_path)
         print(f"Saved model to {ckpt_path}")
-
-callbacks = [
-    keras.callbacks.EarlyStopping(
-        monitor="loss",  # since no val_loss
-        patience=10,
-        restore_best_weights=True
-    ),
-    keras.callbacks.TensorBoard(log_dir=str(output_dir / "logs"),
-                                profile_batch='2,5'),
-    MyCallback()
-]
 
 # ------------------------
 # Train
@@ -165,4 +135,4 @@ ctc_model.fit(
     dataset,
     epochs=args.num_epochs,
     steps_per_epoch=args.steps_per_epoch,
-    callbacks=callbacks)
+    callbacks=[MyCallback()])

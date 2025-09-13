@@ -1,10 +1,8 @@
 from tensorflow.keras.layers import (Conv2D, DepthwiseConv2D, MaxPooling2D,
                                      BatchNormalization, LayerNormalization, Activation,
-                                     Dense, Bidirectional, LSTM, GRU, Dropout)
+                                     Bidirectional, LSTM, GRU, Dropout)
 
 from model_builder import CRNNReshape
-from deformer.deformer import Deformer
-from deformer.deformer_configs import configs as dfconfigs
 
 balanced_spec = [
     # Stage 1
@@ -64,13 +62,9 @@ balanced_spec = [
     (Bidirectional, {'layer': LSTM(256, return_sequences=True)}),       # B × (W/4) × 512
     (Dropout, {'rate': 0.2}),
 
-    # Output projection (CTC logits)
-    # (Dense, {'units': num_classes, 'activation': 'linear'})             # B × (W/4) × num_classes
 ]
 
 lite_spec = [
-    (Deformer, dfconfigs["light"]),
-
     # Stage 1
     (Conv2D, {'filters': 16, 'kernel_size': (3,3), 'padding': 'same'}),
     (LayerNormalization, {}),
@@ -114,12 +108,10 @@ lite_spec = [
     (Bidirectional, {'layer': GRU(256, return_sequences=True)}),
     (Dropout, {'rate': 0.2}),
 
-    # CTC head
-    # (Dense, {'units': num_classes, 'activation': 'linear'})
 ]
 
 
-litest = [  # img_ht = 48
+litest_spec = [  # img_ht = 48
     (Conv2D, {'filters': 16, 'kernel_size': (3,3), 'padding': 'same'}),
     (Activation, {'activation': 'swish'}),
     (MaxPooling2D, {'pool_size': (2,2)}),
@@ -137,4 +129,4 @@ litest = [  # img_ht = 48
     (Bidirectional, {'layer': GRU(256, return_sequences=True)}),
 ]
 
-specs = {'balanced': balanced_spec, 'lite': lite_spec, 'litest': litest}
+specs = {'balanced': balanced_spec, 'lite': lite_spec, 'litest': litest_spec}

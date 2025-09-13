@@ -8,8 +8,7 @@ from PIL import Image
 from tensorflow import keras
 import editdistance
 
-from deformer.deformer import Deformer
-from model_builder import CRNNReshape, CTCLayer
+from model_builder import CRNNReshape
 from post_process import PostProcessor
 
 try:
@@ -23,8 +22,8 @@ except ModuleNotFoundError:
 # Helper: build datagen
 # -----------------------------
 parser = argparse.ArgumentParser()
-parser.add_argument("-C", "--checkpoint", required=False, help="Path to trained .keras model checkpoint", default="models/lite-0824-0956-ep055-er076.keras")
-parser.add_argument("-S", "--chars_per_sample", type=int, default=6)
+parser.add_argument("checkpoint", help="Path to trained .keras model checkpoint")
+parser.add_argument("-C", "--chars_per_sample", type=int, default=6)
 parser.add_argument("-B", "--batch_size", type=int, default=1)
 args = parser.parse_args()
 batch_size = args.batch_size
@@ -34,33 +33,16 @@ batch_size = args.batch_size
 # -----------------------------
 checkpoint = Path(args.checkpoint)
 print(f"Loading model from {checkpoint}")
-ctc_model = keras.models.load_model(
-    checkpoint,
-    compile=False,
-    custom_objects={"CRNNReshape": CRNNReshape,
-                    "CTCLayer": CTCLayer,
-                    "Deformer": Deformer}
-)
-prediction_model = keras.models.Model(
-    ctc_model.get_layer(name="image").output,
-    ctc_model.get_layer(name="softmax").output
-)
-
-img_shape = prediction_model.get_layer("image").output.shape
-print("Image shape: ", img_shape)
-_, height, wd_in, ch_in = img_shape
-
-out_shape = prediction_model.get_layer("softmax").output.shape
-_, wd_out, num_classes = out_shape
-print("Out shape: ", out_shape)
+prediction_model = keras.models.load_model(checkpoint, custom_objects={"CRNNReshape": CRNNReshape})
+height = prediction_model.input_shape[1]
+print("Height: ", height)
 
 # -----------------------------
 # Datagen, Printer
 # -----------------------------
 scribe_args = {"height": height, "hbuffer": 5, "vbuffer": 0, "nchars_per_sample": args.chars_per_sample}
-dummy = lambda x: x
 scriber = Scribe(lang, **scribe_args)
-datagen = DataGenerator(scriber, dummy, dummy, batch_size)
+datagen = DataGenerator(scriber, batch_size=batch_size)
 printer = PostProcessor(lang.symbols)
 
 def one_batch():
@@ -89,8 +71,8 @@ def one_batch():
         if eddist > -1:
             print("EDIT DISI: ", eddist)
             printer.show_all(label, image2, prob2, True)
-            img255 = as255(1 - image)
-            prob255 = dilate(as255(prob.T), wd_scaled_down_by, wd_scaled_down_by)
+            img255 = as255(1-image)
+            prob255 = dilate(as255(1-prob.T), 1, wd_scaled_down_by)
             img = np.vstack((img255, prob255))
             img = Image.fromarray(img)
             img.show()
