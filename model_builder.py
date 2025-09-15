@@ -5,7 +5,7 @@ from tensorflow.keras.layers import (Input, Layer, Conv2D, DepthwiseConv2D, MaxP
                                      BatchNormalization, LayerNormalization, Activation,
                                      Dense, Bidirectional, LSTM, GRU, Dropout)
 
-from deformer.deformer_basic import Deformer
+from deformer.deformer import Deformer
 
 names = { Conv2D: 'Conv', DepthwiseConv2D: 'DConv', MaxPooling2D: 'Pool', BatchNormalization: 'BatchNorm',
           LayerNormalization: 'LayerNorm', Activation: 'Act', Dense: 'Dense', Bidirectional: 'Bidir',

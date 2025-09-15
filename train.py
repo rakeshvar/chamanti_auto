@@ -6,7 +6,8 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.models import load_model
 
-from deformer.deformer_configs import configs as deformer_configs
+# from deformer.deformer_configs import configs as deformer_configs
+from deformer.deformer import default_args as deformer_args
 from model_builder import  get_train_model, get_prediction_model
 from post_process import PostProcessor
 from specs import specs
@@ -58,7 +59,7 @@ else:
     ckpt_with = args.init_from
 
 prediction_model.summary()
-ctc_model = get_train_model(prediction_model, deformer_configs["light"], args.learning_rate)
+ctc_model = get_train_model(prediction_model, deformer_args, args.learning_rate)
 ctc_model.summary()
 
 if not init_from_ckpt:
@@ -74,7 +75,8 @@ if not init_from_ckpt:
 height = prediction_model.get_layer("image").output.shape[1]
 scribe_args = {'height': height, 'hbuffer': 5, 'vbuffer': 0, 'nchars_per_sample': args.chars_per_sample}
 scriber = Scribe(lang, **scribe_args)
-datagen = DataGenerator(scriber, batch_size=batch_size)
+noiser = Noiser(scriber.width//16, .9, 1, height//12)
+datagen = DataGenerator(scriber, noiser=noiser, batch_size=batch_size)
 printer = PostProcessor(lang.symbols)
 
 max_width = scriber.width
