@@ -19,7 +19,7 @@ except ModuleNotFoundError:
     from Lekhaka.Lekhaka import Scribe, DataGenerator
 
 # -----------------------------
-# Helper: build datagen
+# Args
 # -----------------------------
 parser = argparse.ArgumentParser()
 parser.add_argument("checkpoint", help="Path to trained .keras model checkpoint")

@@ -5,7 +5,7 @@ from tensorflow.keras.layers import (Input, Layer, Conv2D, DepthwiseConv2D, MaxP
                                      BatchNormalization, LayerNormalization, Activation,
                                      Dense, Bidirectional, LSTM, GRU, Dropout)
 
-from deformer.deformer import Deformer
+from deformer.deformer_basic import Deformer
 
 names = { Conv2D: 'Conv', DepthwiseConv2D: 'DConv', MaxPooling2D: 'Pool', BatchNormalization: 'BatchNorm',
           LayerNormalization: 'LayerNorm', Activation: 'Act', Dense: 'Dense', Bidirectional: 'Bidir',
@@ -33,9 +33,9 @@ class CTCLayer(Layer):
         self.width_down = width_down
 
     def call(self, labels, softmaxout, widths, lengths):
-        widths //= self.width_down
+        widths //= self.width_down                          # Todo: Need to use tf.ceil
         self.add_loss(keras.backend.ctc_batch_cost(labels, softmaxout, widths, lengths))
-        return softmaxout # Return can be any dummy value
+        return softmaxout                                   # Return can be any dummy value
 
     def get_config(self):
         config = super().get_config()

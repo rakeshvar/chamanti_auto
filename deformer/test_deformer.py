@@ -16,7 +16,7 @@ except ImportError:
     import Lekhaka.telugu as lang
     from Lekhaka.Lekhaka import Scribe, DataGenerator
 
-from deformer import Deformer
+from deformer_basic import Deformer
 from deformer_configs import configs as variants
 
 def create_test_model(input_shape, deformer_params):
