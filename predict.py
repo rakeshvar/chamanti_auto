@@ -24,7 +24,7 @@ except ModuleNotFoundError:
 parser = argparse.ArgumentParser()
 parser.add_argument("checkpoint", help="Path to trained .keras model checkpoint")
 parser.add_argument("-C", "--chars_per_sample", type=int, default=6)
-parser.add_argument("-B", "--batch_size", type=int, default=1)
+parser.add_argument("-B", "--batch_size", type=int, default=32)
 args = parser.parse_args()
 batch_size = args.batch_size
 
@@ -33,8 +33,8 @@ batch_size = args.batch_size
 # -----------------------------
 checkpoint = Path(args.checkpoint)
 print(f"Loading model from {checkpoint}")
-prediction_model = keras.models.load_model(checkpoint, custom_objects={"CRNNReshape": CRNNReshape})
-height = prediction_model.input_shape[1]
+inference_model = keras.models.load_model(checkpoint, custom_objects={"CRNNReshape": CRNNReshape})
+height = inference_model.input_shape[1]
 print("Height: ", height)
 
 # -----------------------------
@@ -43,42 +43,44 @@ print("Height: ", height)
 scribe_args = {"height": height, "hbuffer": 5, "vbuffer": 0, "nchars_per_sample": args.chars_per_sample}
 scriber = Scribe(lang, **scribe_args)
 datagen = DataGenerator(scriber, batch_size=batch_size)
-printer = PostProcessor(lang.symbols)
+postprocessor = PostProcessor(lang.symbols)
 
 def one_batch():
     images, labels, img_lens, lbl_lens = datagen.get()
-    probs = prediction_model.predict(images)
+    print("Label Lengths: ", lbl_lens)
+
+    probs = inference_model.predict(images)
     wd_scaled_down_by = images.shape[-2] // probs.shape[-2]
     prob_lens = [math.ceil(img_len / wd_scaled_down_by) for img_len in img_lens]
-    beams = printer.beam_decode(probs, prob_lens)
+    beams = postprocessor.beam_decode(probs, prob_lens)
 
-    print(lbl_lens)
-
-    i = 0
-    for label, image, img_len, lbl_len, prob, prob_len in zip(labels, images, img_lens, lbl_lens, probs, prob_lens):
+    for image, img_len, label, lbl_len, prob, prob_len, beam in zip(images, img_lens, labels, lbl_lens, probs, prob_lens, beams):
         label = label[:lbl_len]
-        image = image.squeeze()
-        image2 = image[::2, :img_len:2]
         prob2 = prob[:prob_len, :]
-        shown_chars = printer.labels_to_chars(label)
-        seen_labels = printer.decode(prob2)
-        greedy_decoded = printer.labels_to_chars(seen_labels)
-        nmissed = len(set(label)-set(seen_labels))
-        beam_decoded = beams[i]
-        eddist = editdistance.eval(label, seen_labels)
+        seen_labels = postprocessor.decode(prob2)
 
-        print(i)
-        if eddist > -1:
-            print("EDIT DISI: ", eddist)
-            printer.show_all(label, image2, prob2, True)
+        # Show Characters
+        shown_chars = postprocessor.labels_to_chars(label)
+        greedy_decoded = postprocessor.labels_to_chars(seen_labels)
+        print(shown_chars)
+        print(greedy_decoded)
+        print(beam)
+
+        eddist = editdistance.eval(label, seen_labels)
+        print("EDIT DISI: ", eddist)
+
+        if eddist > 0:
+            # Show Images
+            image2 = image[::2, :img_len:2]
+            postprocessor.show_all(label, image2, prob2, False)
+            image = image.squeeze()
             img255 = as255(1-image)
             prob255 = dilate(as255(1-prob.T), 1, wd_scaled_down_by)
             img = np.vstack((img255, prob255))
             img = Image.fromarray(img)
             img.show()
 
-        i += 1
-
+            input("Want to see one more? Press Enter. Else Ctrl-Z.")
 
 def as255(v):
     return (255*(v-v.min())/(v.max()-v.min())).astype('uint8')
@@ -93,7 +95,3 @@ def dilate(a, dh, dw):
 
 while True:
     one_batch()
-    try:
-        input("Want to see one more? Press Enter. Else Ctrl-Z.")
-    except KeyboardInterrupt:
-        break

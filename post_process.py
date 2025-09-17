@@ -115,17 +115,17 @@ class PostProcessor:
                           images[i, ::2, :image_lengths[i]:3, 0],  # half rows, third columns (H//2, W'//3)
                           probabilities[i, :probs_lengths[i], :],  # (W//w_down, A)
                           i == num_samples-1)
-            if i == num_samples-1:
-                plt.figure(figsize=(12, 6))
-                plt.imshow(np.log(probabilities[i] + 1e-10), aspect='auto', cmap='viridis')
-                plt.colorbar()
-                fig_path = f"/tmp/heatmap{randint(10**5, 10**6)}.png"
-                plt.savefig(fig_path)
-                print("Saved ", fig_path)
-                plt.close()
 
-        editdistances = self.editdistances(labels, label_lengths, probabilities, probs_lengths)
-        return editdistances
+        return self.editdistances(labels, label_lengths, probabilities, probs_lengths)
+
+    def plot_heatmap(self, probabilities):
+        plt.figure(figsize=(12, 6))
+        plt.imshow(np.log(probabilities + 1e-10), aspect='auto', cmap='viridis')
+        plt.colorbar()
+        fig_path = f"/tmp/heatmap{randint(10 ** 5, 10 ** 6)}.png"
+        plt.savefig(fig_path)
+        print("Saved ", fig_path)
+        plt.close()
 
     def beam_decode(self, logits, input_lengths, beam_width=10, greedy=False):
         """
@@ -140,11 +140,9 @@ class PostProcessor:
         Returns:
             List of strings (decoded predictions)
         """
-        # Ensure tensor
         logits = tf.convert_to_tensor(logits, dtype=tf.float32)
         input_lengths = tf.convert_to_tensor(input_lengths, dtype=tf.int32)
 
-        # Decode
         decoded, _ = tf.keras.backend.ctc_decode(
             logits,
             input_length=input_lengths,
@@ -156,13 +154,11 @@ class PostProcessor:
         except TypeError as e:
             decoded_dense = decoded[0].numpy()
 
-        results = []
+        ret = []
         for seq in decoded_dense:
-            chars = []
-            for idx in seq:
-                if idx == -1:  # padding
-                    continue
-                if idx < len(self.symbols):
-                    chars.append(self.symbols[idx])
-            results.append("".join(chars))
-        return results
+            labels = [l for l in seq if l >= 0]
+            chars = self.labels_to_chars(labels)
+            text = "".join(chars)
+            ret.append((labels, chars, text))
+
+        return ret
