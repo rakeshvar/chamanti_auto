@@ -9,22 +9,34 @@ class Deformer(Layer):
     Combines geometric, photometric, and document-specific augmentations.
     Only applies during training (training=True).
     """
-    
+
+    default_config = {
+        'zoom_range': 0.03,
+        'rotation_range': 0.005,
+        'translation_range': 0.05,
+        'shear_range': 0.05,
+        'gaussian_blur': 0.003,
+        'num_cutouts': 20,
+        'cutout_size': (.04, .04),
+        'contrast_range': 0.5,
+        'brightness_range': 0.5,
+    }
+
     def __init__(self,
                  # Geometric parameters
-                 zoom_range=0.,  # ±15% zoom
-                 rotation_range=0.,  # ±2.9° rotation (in radians)
-                 translation_range=0.,  # ±10% translation
-                 shear_range=0.,  # shear for text lines
+                 zoom_range,
+                 rotation_range,
+                 translation_range,
+                 shear_range,
 
                  # Noise and artifacts
-                 gaussian_blur=0.,
-                 num_cutouts=0,  # number of cutout rectangles
-                 cutout_size=(.0, .0),  # max cutout size
+                 gaussian_blur,
+                 num_cutouts,  # number of cutout rectangles
+                 cutout_size,  # max cutout size
 
                  # Photometric parameters
-                 contrast_range=0.,  # contrast variation
-                 brightness_range=0.,  # brightness variation
+                 contrast_range,  # contrast variation
+                 brightness_range,  # brightness variation
 
                  **kwargs):
         super().__init__(**kwargs)
@@ -81,13 +93,13 @@ class Deformer(Layer):
     def call(self, images, training=None):
         if not training:
             return images
-            
+
         x = images
         for layer in self.augmentation_layers:
             x = layer(x, training=training)
-            
+
         return x
-    
+
     def get_config(self):
         config = super().get_config()
         config.update({
