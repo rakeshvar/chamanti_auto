@@ -33,9 +33,9 @@ class CTCLayer(Layer):
         self.width_down = width_down
 
     def call(self, labels, softmaxout, widths, lengths):
-        widths //= self.width_down                          # Todo: Need to use tf.ceil
+        widths = tf.cast(tf.math.ceil(tf.cast(widths, tf.float32) / self.width_down), tf.int32)
         self.add_loss(keras.backend.ctc_batch_cost(labels, softmaxout, widths, lengths))
-        return softmaxout                                   # Return can be any dummy value
+        return softmaxout   # Return can be any dummy value
 
     def get_config(self):
         config = super().get_config()
@@ -45,7 +45,7 @@ class CTCLayer(Layer):
 names[CRNNReshape] = 'CRNNReshape'
 names[CTCLayer] = 'CTCLayer'
 
-def get_prediction_model(layer_specs, height, num_classes):
+def get_inference_model(layer_specs, height, num_classes):
     images = Input(shape=(height, None, 1), name="image")
 
     x = images
@@ -73,10 +73,10 @@ def get_total_width_pooling(model):
 
 
 def get_train_model(model, deformer_args, learning_rate):
+    images = Input(shape=model.input_shape[1:], name="image")
     labeling = Input(name="labeling", shape=(None,), dtype="int32")
     image_width = Input(name="image_width", shape=(1,), dtype="int32")
     labeling_length = Input(name="labeling_length", shape=(1,), dtype="int32")
-    images = Input(shape=model.input_shape[1:], name="image")
 
     deformed_images = Deformer(**deformer_args)(images)
     probabilities = model(deformed_images)
