@@ -6,9 +6,8 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.models import load_model
 
-# from deformer.deformer_configs import configs as deformer_configs
 from deformer.deformer import default_args as deformer_args
-from model_builder import  get_train_model, get_prediction_model
+from model_builder import  get_train_model, get_inference_model
 from post_process import PostProcessor
 from specs import specs
 
@@ -50,40 +49,39 @@ init_from_ckpt = args.init_from.endswith('.keras')
 if init_from_ckpt:
     checkpoint_path = Path(args.init_from)
     print(f"Loading model from {checkpoint_path}")
-    prediction_model = load_model(checkpoint_path)
+    inference_model = load_model(checkpoint_path)
     ckpt_with = Path(args.init_from).stem.split('-')[0]
 
 else:
     spec = specs[args.init_from]
-    prediction_model = get_prediction_model(spec, args.height, len(lang.symbols))
+    inference_model = get_inference_model(spec, args.height, len(lang.symbols))
     ckpt_with = args.init_from
-
-prediction_model.summary()
-ctc_model = get_train_model(prediction_model, deformer_args, args.learning_rate)
-ctc_model.summary()
-
-if not init_from_ckpt:
     # Bias towards blanks
-    sml = prediction_model.get_layer("softmax")
+    sml = inference_model.get_layer("softmax")
     weights, biases = sml.get_weights()
     biases[-1] += 5.5
     sml.set_weights([weights, biases])
 
+inference_model.summary()
+ctc_model = get_train_model(inference_model, deformer_args, args.learning_rate)
+ctc_model.summary()
+
 # ------------------------
 # Language Data Gen
 # ------------------------
-height = prediction_model.get_layer("image").output.shape[1]
+print(args)
+height = inference_model.input_shape[1]
+
 scribe_args = {'height': height, 'hbuffer': 5, 'vbuffer': 0, 'nchars_per_sample': args.chars_per_sample}
 scriber = Scribe(lang, **scribe_args)
+max_width = scriber.width
+print(scriber)
+
 noiser = Noiser(scriber.width//16, .9, 1, height//12)
 datagen = DataGenerator(scriber, noiser=noiser, batch_size=batch_size)
-printer = PostProcessor(lang.symbols)
-
-max_width = scriber.width
 max_label_len = datagen.labelswidth
 
-print(scriber)
-print(args)
+postprocessor = PostProcessor(lang.symbols)
 print("GPUs Available:", tf.config.list_physical_devices('GPU'))
 
 # ------------------------
@@ -109,7 +107,7 @@ dataset = tf.data.Dataset.from_generator(
 ).prefetch(tf.data.AUTOTUNE).map(proper_x_y)
 
 # ------------------------
-# Callbacks + Custom Callback: EDER + sample display + checkpoint
+# Test & Checkpoint
 # ------------------------
 from datetime import datetime
 timestamp = datetime.now().strftime("%m%d-%H%M")
@@ -118,15 +116,13 @@ ckpt_head = f"{ckpt_with}-{timestamp}"
 class MyCallback(keras.callbacks.Callback):
     def on_epoch_begin(self, epoch, logs=None):
         image, labels, image_lengths, label_lengths = datagen.get()
-        print(image.shape)
-        probabilities = prediction_model.predict(image)
+        probabilities = inference_model.predict(image)
         probs_lengths = np.ceil(image_lengths / (max_width // probabilities.shape[-2])).astype(int)
-        ederr = printer.show_batch(image, image_lengths, labels, label_lengths, probabilities, probs_lengths)
+        ederr = postprocessor.show_batch(image, image_lengths, labels, label_lengths, probabilities, probs_lengths)
         print(f"Edit Distance Error Rate: {ederr:.1%}")
 
-        name = ckpt_head + f"-ep{epoch:03d}-er{int(1000*ederr):03d}.keras"
-        ckpt_path = output_dir / name
-        prediction_model.save(ckpt_path)
+        ckpt_path = output_dir / (ckpt_head + f"-ep{epoch:03d}-er{int(1000*ederr):03d}.keras")
+        inference_model.save(ckpt_path)
         print(f"Saved model to {ckpt_path}")
 
 # ------------------------

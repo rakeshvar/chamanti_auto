@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 from tensorflow.keras.models import load_model
 
-from model_builder import get_prediction_model
+from model_builder import get_inference_model
 from specs import specs
 
 
@@ -16,7 +16,7 @@ height = src_model.input_shape[1]
 num_classes = src_model.output_shape[-1] - 1
 
 spec = specs["lite"]
-tgt_model = get_prediction_model(spec, height, num_classes)
+tgt_model = get_inference_model(spec, height, num_classes)
 
 # ------------------------
 # Transfer
