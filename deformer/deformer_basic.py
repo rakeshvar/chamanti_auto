@@ -2,6 +2,18 @@ from tensorflow.keras.layers import Layer
 from tensorflow.keras import saving
 import keras_cv
 
+default_config = {
+    'zoom_range': 0.03,
+    'rotation_range': 0.005,
+    'translation_range': 0.05,
+    'shear_range': 0.05,
+    'gaussian_blur': 0.003,
+    'num_cutouts': 20,
+    'cutout_size': (.04, .04),
+    'contrast_range': 0.5,
+    'brightness_range': 0.5,
+}
+
 @saving.register_keras_serializable()
 class Deformer(Layer):
     """
@@ -10,17 +22,6 @@ class Deformer(Layer):
     Only applies during training (training=True).
     """
 
-    default_config = {
-        'zoom_range': 0.03,
-        'rotation_range': 0.005,
-        'translation_range': 0.05,
-        'shear_range': 0.05,
-        'gaussian_blur': 0.003,
-        'num_cutouts': 20,
-        'cutout_size': (.04, .04),
-        'contrast_range': 0.5,
-        'brightness_range': 0.5,
-    }
 
     def __init__(self,
                  # Geometric parameters

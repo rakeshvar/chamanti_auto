@@ -24,13 +24,13 @@ default_args = {
     "ink_blot_fraction": .1, # Number of ink-blots for paper-blot
 
      # Local transformation parameters
-    "erosion_intensity":0.05,
+    "erosion_intensity":.05,
     "binarize_threshold":0.1,
     "jpeg_quality_range":(20, 80),
 
      # Lighting parameters
-    "brightness_range":0.2,
-    "contrast_range":0.3,
+    "brightness_range":.2,
+    "contrast_range":.3,
 }
 
 class Deformer(Layer):
